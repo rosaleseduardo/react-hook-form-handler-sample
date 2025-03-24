@@ -1,0 +1,90 @@
+import { useEffect, useMemo } from 'react';
+import { omit } from 'lodash';
+import type { FC } from 'react';
+import type { FieldValues } from 'react-hook-form';
+
+import { useWithBaseField } from '@hooks';
+import type { BaseFieldProps } from '@interfaces';
+
+/**
+ * Enhances a given React component by providing form handling capabilities.
+ *
+ * It wraps the `WrappedComponent` with additional props such as `onChange`,
+ * `onBlur`, `value`, `error`, and `helperText`.
+ *
+ * The form handling is powered by a `formHandler` instance implementing
+ * specific methods.
+ *
+ * @param WrappedComponent - The React component to be enhanced with form
+ * handling props.
+ * @param ComponentType - The type of component to be enhanced
+ *
+ * @typeParam T - The type of form values managed by the form handler.
+ *
+ * @returns The enhanced component with form handling props.
+ */
+const withBaseField = <T extends FieldValues>(WrappedComponent: FC<T>, ComponentType: string) => {
+  /**
+   * The enhanced functional component with form handling capabilities.
+   *
+   * @param props - Props to be passed to the enhanced component.
+   *
+   * @returns JSX representing the enhanced component.
+   */
+  return function WithFormHandlerField(props: T & BaseFieldProps<T>) {
+    /**
+     * List of properties that should be excluded from being passed to HTML
+     * elements.
+     *
+     * These properties are typically custom props used in custom components
+     * and should not be injected into the final rendered HTML elements.
+     */
+    const PROPERTIES_TO_BE_EXCLUDED = ['formHandler'];
+
+    const { setInitialValue, value, handleBlur, handleChange, debouncedHandleChange, debouncedBlurChange } =
+      useWithBaseField(props, ComponentType);
+
+    const currentState = useMemo(() => props.formHandler?.formState().currentState, [props.formHandler]);
+
+    useEffect(() => {
+      setInitialValue();
+
+      // Clean up debounced functions when component is unmounted
+      return () => {
+        debouncedHandleChange.cancel();
+        debouncedBlurChange.cancel();
+      };
+    }, [currentState]);
+
+    /**
+     * Injects the additional props related to form handling to the
+     * WrappedComponent.
+     */
+    return (
+      <WrappedComponent
+        {...(omit(props, PROPERTIES_TO_BE_EXCLUDED) as T)}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        value={value}
+        error={props.formHandler?.fieldState(props.name).invalid ?? props.error}
+        /**
+         * IMPORTANT
+         *
+         * If you are using an internationalization package (such as
+         * react-i18next or react-intl), ensure that you call the package
+         * translation function here (through the locallization provider). This
+         * ensures the error message is translated and displayed seamlessly.
+         *
+         * NOTE
+         *
+         * Validation schema messages should only include the translation
+         * token. This is the appropriate place to handle the translation of
+         * the error message.
+         */
+        helperText={props.formHandler?.fieldState(props.name).error ?? props.helperText}
+      />
+    );
+  };
+};
+
+export default withBaseField;
